@@ -8,6 +8,7 @@ import os
 import pickle
 import time
 
+import cv2
 import gym
 import numpy
 import subprocess
@@ -23,31 +24,40 @@ import numpy as np
 class StarCraft2Env(gym.Env):
 
 
-    def __init__(self):
+    def __init__(self,rank):
         super(StarCraft2Env,self).__init__()
         self.observation_space = gym.spaces.Box(low=0,high=255,shape=(224,224,3),dtype=np.uint8)
-        self.action_space = gym.spaces.Discrete(6)
+
+        self.action_space = gym.spaces.Discrete(7)
+        self.rank = rank
+        self.transaction_file = f'transaction{self.rank}.pkl'
 
     def render(self, mode="human"):
-        pass
+        cv2.imshow('map', cv2.flip(cv2.resize(self.map, None, fx=2, fy=2, interpolation=cv2.INTER_NEAREST), 0))
+        cv2.waitKey(1)
 
     def step(self,action):
+        if self.done:
+            observation = np.zeros((224, 224, 3), dtype=np.uint8)
+            return observation,0,None,True
         while True:
             try:
-                with open('transaction.pkl','rb') as f:
+                with open(self.transaction_file,'rb') as f:
                     transaction = pickle.load(f)
+                if transaction['done']:
+                    break
                 if transaction['action'] is None:
                     transaction['action'] = action
-                    with open('transaction.pkl','wb') as f:
+                    with open(self.transaction_file,'wb') as f:
                         pickle.dump(transaction,f)
                     break
-                    time.sleep(0.1)
+                time.sleep(0.1)
             except Exception as e:
                 time.sleep(0.1)
         #取回环境返回的transaction
         while True:
             try:
-                with open('transaction.pkl','rb') as f:
+                with open(self.transaction_file,'rb') as f:
                     transaction = pickle.load(f)
                 if transaction['action'] is None:
                     transaction['action'] = action
@@ -57,31 +67,35 @@ class StarCraft2Env(gym.Env):
                     break
             except Exception as e:
                 time.sleep(0.1)
+        self.map = observation
+        self.done = done
         info = {}
         return observation,reward,done,info
 
 
     def reset(self):
+        self.map = np.zeros((224, 224, 3), dtype=np.uint8)
+        self.done = False
         print('Reset Env')
         observation = np.zeros((224,224,3),dtype=np.uint8)
         transaction = {'observation':observation,'reward':0,'action':None,'done':False}
-        with open('transaction.pkl','wb') as f:
+        with open(self.transaction_file,'wb') as f:
             pickle.dump(transaction,f)
-        subprocess.Popen(["cmd", "/c",'python','WorkRLRobot.py'])
+        subprocess.Popen(["cmd", "/c",'python','WorkRLRobot.py','-rank', str(self.rank)])
         return observation
 
 
 # In[3]:
 
-
-# sc2 = StarCraft2Env()
+#
+# sc2 = StarCraft2Env(0)
 # check_env(sc2)
 
 
 # In[ ]:
 
 
-# for _ in range(300):
+# for _ in range(600):
 #     sc2.step(0)
 #     sc2.step(1)
 #     sc2.step(2)
